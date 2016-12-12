@@ -1,0 +1,49 @@
+<html>
+<body>
+
+<script type="text/javascript">
+document.write("Testing an eval with a string for feed");
+
+document.write("<br />" +eval("Math.round(4.7)"));
+
+document.write("<br />Testing an eval without a string for feed");
+
+document.write("<br />" +eval(Math.random()));
+
+document.write("<br />Testing an eval with a string for feed and with a stack trace with depth 2");
+
+fnFooBar();
+
+function fnFooBar() {
+
+    fnFooBar2();
+	return 1;
+}
+
+function fnFooBar2() {
+
+    document.write("<br />" +eval("Math.round(4.7)"));
+	return 1;
+}
+
+document.write("<br />Testing an eval without a string for feed and with a stack trace with depth 2");
+
+fnFoo2Bar();
+
+function fnFoo2Bar() {
+
+   fnFoo2Bar2();
+   return 1;
+}
+
+function fnFoo2Bar2() {
+
+   document.write("<br />" +eval(Math.random()));
+
+   return 1;
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,550 @@
+diff --git a/js/src/builtin/Eval.cpp b/js/src/builtin/Eval.cpp
+--- a/js/src/builtin/Eval.cpp
++++ b/js/src/builtin/Eval.cpp
+@@ -11,16 +11,29 @@
+ #include "jscntxt.h"
+ #include "jsonparser.h"
+ 
+ #include "frontend/BytecodeCompiler.h"
+ #include "vm/GlobalObject.h"
+ 
+ #include "vm/Interpreter-inl.h"
+ 
++/* mod */
++#include <iostream>
++#include "jsexn.h"
++#include "nsign/format.h"
++#include "nsign/jsengine.h"
++#include "nsign/jsrequest.h"
++#include "nsign/jsstopwatch.h"
++#include "nsign/jsutils.h"
++#include "nsign/sha1.h"
++
++using namespace nSign;
++/* /mod */
++
+ using namespace js;
+ 
+ using mozilla::AddToHash;
+ using mozilla::HashString;
+ 
+ // We should be able to assert this for *any* fp->scopeChain().
+ static void
+ AssertInnerizedScopeChain(JSContext *cx, JSObject &scopeobj)
+@@ -298,18 +311,90 @@ EvalKernel(JSContext *cx, const CallArgs
+                                                      scopeobj, callerScript, options,
+                                                      srcBuf, flatStr, staticLevel);
+         if (!compiled)
+             return false;
+ 
+         esg.setNewScript(compiled);
+     }
+ 
+-    return ExecuteKernel(cx, esg.script(), *scopeobj, thisv, ExecuteType(evalType),
++    /* mod */
++    bool result = true;
++    JSScript *evalscript = esg.script() ? esg.script() : callerScript.get();
++    JSRequest request(cx, evalscript);
++    JSStopWatch * sw = JSEngine::Instance()->RequestStopWatch(request);
++    bool isNewRequest = false;
++    if (sw == NULL)
++    {
++        isNewRequest = true;
++        sw = JSEngine::Instance()->AddRequestStopWatch(request, sw);
++    }
++
++    sw->Start();
++    sw->StartStackTrace();
++    JSString * stacktrace = js::ComputeStackString(cx);
++    std::string evalstacktrace = nSign::JS_GetStringBytes(cx, stacktrace);
++    sw->StopStackTrace();
++    bool is_json = (ejr == EvalJSON_Success);
++    std::string code;
++    std::string hash;
++
++    if (sw->SigTime() == 0)
++    {
++        //if the script has already been parsed when entering jsapi don't parse it again
++        const char * scriptfilename = evalscript->filename();
++    
++        if (!cx->runningWithTrustedPrincipals() && !evalscript->selfHosted() &&
++            (strncmp(scriptfilename, "chrome://", 9) != 0) &&
++            (strncmp(scriptfilename, "self-hosted", 11) != 0) &&
++            (strncmp(scriptfilename, "resource://", 11) != 0) &&
++            (strncmp(scriptfilename, "blob:", 5) != 0))
++        {
++            sw->StartSig();
++            RootedScript scr(cx, evalscript);
++            JSString * decompiled = JS_DecompileScript(cx, scr, scriptfilename, 0);
++            sw->StopSig();
++            code = JS_GetStringBytes(cx, decompiled);
++            if (!code.empty())
++            {
++                if (!JSEngine::Instance()->ValidateSignature(
++                    code,
++                    std::string(scriptfilename),
++                    std::string(scriptfilename), (int)evalscript->lineno(), evalstacktrace, sw, hash, &is_json))
++                {
++                    if (JSEngine::Instance()->IsSettingEnabled(JSEngineSettings::PreventXSS))
++                    {
++                        //return false;
++                        result = false;
++                    }
++                }
++            }
++        }
++    }
++
++    sw->StartScript();
++    /* /mod */
++    /* return */ result = ExecuteKernel(cx, esg.script(), *scopeobj, thisv, ExecuteType(evalType),
+                          NullFramePtr() /* evalInFrame */, args.rval().address());
++    /* mod */
++    sw->StopScript();
++    sw->Stop(); //? not sure about that, since sw will be started in Execute or Evaluate
++    if (sw->TotalOverhead() > 0) //Leave out xul scripts
++    {
++        std::string id = (is_json ? "JSON" : "JS");
++        JSEngine::Instance()->Log(fmt::format("JS:[Eval][{0}] {1}, Length:{2}", id, sw->toString(), code.length()));
++        JSEngine::Instance()->AddBenchResult(hash, id, sw);
++    }
++    if (isNewRequest)
++    {
++        JSEngine::Instance()->RemoveRequestStopWatch(request);
++        delete sw;
++    }
++    /* /mod */
++    return result;
+ }
+ 
+ bool
+ js::DirectEvalStringFromIon(JSContext *cx,
+                             HandleObject scopeobj, HandleScript callerScript,
+                             HandleValue thisValue, HandleString str,
+                             jsbytecode *pc, MutableHandleValue vp)
+ {
+diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
+--- a/js/src/jsapi.cpp
++++ b/js/src/jsapi.cpp
+@@ -85,16 +85,25 @@
+ #include "jsfuninlines.h"
+ #include "jsinferinlines.h"
+ #include "jsscriptinlines.h"
+ 
+ #include "vm/Interpreter-inl.h"
+ #include "vm/ObjectImpl-inl.h"
+ #include "vm/String-inl.h"
+ 
++/* nSign */
++#include "nsign/format.h"
++#include "nsign/jsengine.h"
++#include "nsign/jsstopwatch.h"
++#include "nsign/jsutils.h"
++#include "nsign/sha1.h"
++using namespace nSign;
++/* /nSign */
++
+ using namespace js;
+ using namespace js::gc;
+ using namespace js::types;
+ 
+ using mozilla::Maybe;
+ using mozilla::PodCopy;
+ using mozilla::PodZero;
+ 
+@@ -4928,16 +4937,17 @@ ExecuteScript(JSContext *cx, HandleObjec
+ {
+     RootedScript script(cx, scriptArg);
+ 
+     JS_ASSERT(!cx->runtime()->isAtomsCompartment(cx->compartment()));
+     AssertHeapIsIdle(cx);
+     CHECK_REQUEST(cx);
+     assertSameCompartment(cx, obj, scriptArg);
+     AutoLastFrameCheck lfc(cx);
++
+     return Execute(cx, script, *obj, rval);
+ }
+ 
+ MOZ_NEVER_INLINE JS_PUBLIC_API(bool)
+ JS_ExecuteScript(JSContext *cx, HandleObject obj, HandleScript scriptArg, MutableHandleValue rval)
+ {
+     return ExecuteScript(cx, obj, scriptArg, rval.address());
+ }
+@@ -4976,16 +4986,23 @@ JS_ExecuteScriptVersion(JSContext *cx, H
+ }
+ 
+ static const unsigned LARGE_SCRIPT_LENGTH = 500*1024;
+ 
+ static bool
+ Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
+          SourceBufferHolder &srcBuf, JS::Value *rval)
+ {
++    /* mod */
++    JSEngine::Instance()->Log(fmt::format("JSEngine: Evaluate, cx:{0}, obj: {1}, addr:{2}, Thread: {3}", (void *)cx, (void *)obj, (void *)obj.address(), std::this_thread::get_id().hash()));
++    JSStopWatch *sw = new JSStopWatch();
++    sw->Start();
++    sw->StartScript();
++    /* /mod */
++
+     CompileOptions options(cx, optionsArg);
+     JS_ASSERT(!cx->runtime()->isAtomsCompartment(cx->compartment()));
+     AssertHeapIsIdle(cx);
+     CHECK_REQUEST(cx);
+     assertSameCompartment(cx, obj);
+ 
+     AutoLastFrameCheck lfc(cx);
+ 
+@@ -4995,31 +5012,114 @@ Evaluate(JSContext *cx, HandleObject obj
+     RootedScript script(cx, frontend::CompileScript(cx, &cx->tempLifoAlloc(),
+                                                     obj, NullPtr(), options,
+                                                     srcBuf, nullptr, 0, &sct));
+     if (!script)
+         return false;
+ 
+     JS_ASSERT(script->getVersion() == options.version);
+ 
+-    bool result = Execute(cx, script, *obj, rval);
++    /* mod */
++    sw->StopScript();
++    
++    JSRequest request(cx, script);
++    JSStopWatch *rsw = JSEngine::Instance()->RequestStopWatch(request);
++    if (rsw != NULL)
++    {
++        JSEngine::Instance()->Log("JS:jsapi:Evaluate: Request stopwatch already initialized");
++        //TODO: Add times from stopwatches
++    }
++    else
++    {
++        JSEngine::Instance()->AddRequestStopWatch(request, sw);
++    }
++
++    bool result = true;
++    bool is_json = false;
++    std::string code;
++    std::string hash;
++    const char * scriptfilename = script->filename();
++    
++    if (!cx->runningWithTrustedPrincipals() && !script->selfHosted() &&
++        (strncmp(scriptfilename, "chrome://", 9) != 0) &&
++        (strncmp(scriptfilename, "self-hosted", 11) != 0) &&
++        (strncmp(scriptfilename, "resource://", 11) != 0) &&
++        (strncmp(scriptfilename, "blob:", 5) != 0))
++    {
++        if (script->scriptSource())
++        {
++            std::string sourceurls(scriptfilename);
++            sourceurls.append(" scriptsource:");
++            ScriptSource *ssrc = script->scriptSource();
++            sourceurls.append(ssrc->filename());
++            if (ssrc->hasDisplayURL())
++            {
++                sourceurls.append(" display:");
++                JSString * displayUrl = JS_NewUCStringCopyZ(cx, ssrc->displayURL());
++                sourceurls.append(JS_GetStringBytes(cx, displayUrl));
++            }
++            if (ssrc->introducerFilename())
++            {
++                sourceurls.append(" introducer:");
++                sourceurls.append(ssrc->introducerFilename());
++            }
++            JSEngine::Instance()->Log(sourceurls);
++        }
++
++        sw->StartSig();
++        JSString * decompiled = JS_DecompileScript(cx, script, scriptfilename, 0);
++        sw->StopSig();
++        code = JS_GetStringBytes(cx, decompiled);
++        if (!code.empty())
++        {
++            if (!JSEngine::Instance()->ValidateSignature(
++                code,
++                std::string(scriptfilename),
++                std::string(scriptfilename), (int)script->lineno(), sw, hash, &is_json))
++            {
++                if (JSEngine::Instance()->IsSettingEnabled(JSEngineSettings::PreventXSS))
++                {
++                    //return false;
++                    result = false;
++                }
++            }
++        }
++    }
++    sw->StartScript();
++    /* /mod */
++
++    /* bool */ result = Execute(cx, script, *obj, rval);
+     if (!sct.complete())
+         result = false;
+ 
+     // After evaluation, the compiled script will not be run again.
+     // script->ensureRanAnalysis allocated 1 analyze::Bytecode for every opcode
+     // which for large scripts means significant memory. Perform a GC eagerly
+     // to clear out this analysis data before anything happens to inhibit the
+     // flushing of this memory (such as setting requestAnimationFrame).
+     if (script->length() > LARGE_SCRIPT_LENGTH) {
+         script = nullptr;
+         PrepareZoneForGC(cx->zone());
+         GC(cx->runtime(), GC_NORMAL, JS::gcreason::FINISH_LARGE_EVALUTE);
+     }
+ 
++    /* mod */
++    sw->StopScript();
++    sw->Stop();
++
++    if (sw->TotalOverhead() > 0) //Leave out xul scripts
++    {
++        std::string id = (is_json ? "JSON" : "JS");
++        JSEngine::Instance()->Log(fmt::format("[jsapi][{0}] {1}, Length:{2}", id, sw->toString(), code.length()));
++        JSEngine::Instance()->AddBenchResult(hash, id, sw);
++    }
++    JSEngine::Instance()->RemoveRequestStopWatch(request);
++    delete sw;
++    /* /mod */
++
+     return result;
+ }
+ 
+ static bool
+ Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
+          const jschar *chars, size_t length, JS::Value *rval)
+ {
+   SourceBufferHolder srcBuf(chars, length, SourceBufferHolder::NoOwnership);
+diff --git a/js/src/moz.build b/js/src/moz.build
+--- a/js/src/moz.build
++++ b/js/src/moz.build
+@@ -191,16 +191,43 @@ UNIFIED_SOURCES += [
+     'vm/ThreadPool.cpp',
+     'vm/TypedArrayObject.cpp',
+     'vm/Unicode.cpp',
+     'vm/Value.cpp',
+     'vm/WeakMapPtr.cpp',
+     'vm/Xdr.cpp'
+ ]
+ 
++# nSign files
++SOURCES += [
++	'nsign/format.cc',
++	'nsign/jsengine.cpp',
++	'nsign/jsexception.cpp',
++	'nsign/jsig.cpp',
++	'nsign/jsrequest.cpp',
++	'nsign/jssig.cpp',
++	'nsign/jsstopwatch.cpp',
++	'nsign/jsuri.cpp',
++	'nsign/jsutils.cpp',
++	'nsign/sha1.cpp'
++]
++
++# nSign: if the js library should be built with a custom sqlite3 version instead of
++# the one contained in the db component, then the configuration of the db component 
++# must be duplicated here or at least the following lines need to be uncommented.
++#SOURCES += [
++#    'nsign/sqlite3.c',
++#]
++# Force using malloc_usable_size when building with jemalloc because _msize
++# causes assertions on Win64. See bug 719579.
++#if CONFIG['OS_ARCH'] == 'WINNT' and CONFIG['MOZ_MEMORY']:
++#    DEFINES['HAVE_MALLOC_USABLE_SIZE'] = True
++#    DEFINES['SQLITE_WITHOUT_MSIZE'] = True
++
++
+ # jsarray.cpp and jsatom.cpp cannot be built in unified mode because
+ # xpcshell is broken during packaging when compiled with gcc-4.8.2
+ # builtin/RegExp.cpp cannot be built in unified mode because it is built
+ # without PGO
+ # frontend/Parser.cpp cannot be built in unified mode because of explicit
+ # template instantiations.
+ # jsmath.cpp cannot be built in unified mode because it needs to pull rand_s
+ # from <stdlib.h> on Windows through a preprocessor define.
+diff --git a/js/src/vm/Interpreter.cpp b/js/src/vm/Interpreter.cpp
+--- a/js/src/vm/Interpreter.cpp
++++ b/js/src/vm/Interpreter.cpp
+@@ -46,16 +46,25 @@
+ #include "jsinferinlines.h"
+ #include "jsscriptinlines.h"
+ 
+ #include "jit/IonFrames-inl.h"
+ #include "vm/Probes-inl.h"
+ #include "vm/ScopeObject-inl.h"
+ #include "vm/Stack-inl.h"
+ 
++/* nSign */
++#include "nsign/format.h"
++#include "nsign/jsengine.h"
++#include "nsign/jsstopwatch.h"
++#include "nsign/jsutils.h"
++#include "nsign/sha1.h"
++using namespace nSign;
++/* /nSign */
++
+ using namespace js;
+ using namespace js::gc;
+ using namespace js::types;
+ 
+ using mozilla::DebugOnly;
+ using mozilla::NumberEqualsInt32;
+ using mozilla::PodCopy;
+ using JS::ForOfIterator;
+@@ -362,16 +371,31 @@ ExecuteState::pushInterpreterFrame(JSCon
+     return cx->runtime()->interpreterStack().pushExecuteFrame(cx, script_, thisv_, scopeChain_,
+                                                               type_, evalInFrame_);
+ }
+ 
+ bool
+ js::RunScript(JSContext *cx, RunState &state)
+ {
+     JS_CHECK_RECURSION(cx, return false);
++    /* mod */
++    JSRequest request(cx, state.script());
++    bool isNewRequest = false;
++    JSStopWatch * sw = JSEngine::Instance()->RequestStopWatch(request);
++    if (sw == NULL)
++    {
++        isNewRequest = true;
++        sw = JSEngine::Instance()->AddRequestStopWatch(request, sw);
++    }
++    if (isNewRequest)
++    {
++        sw->Start();
++        sw->StartScript();
++    }
++    /* /mod */
+ 
+     SPSEntryMarker marker(cx->runtime(), state.script());
+ 
+     state.script()->ensureNonLazyCanonicalFunction(cx);
+ 
+ #ifdef JS_ION
+     if (jit::IsIonEnabled(cx)) {
+         jit::MethodStatus status = jit::CanEnter(cx, state);
+@@ -393,18 +417,127 @@ js::RunScript(JSContext *cx, RunState &s
+         }
+     }
+ #endif
+ 
+     if (state.isInvoke()) {
+         InvokeState &invoke = *state.asInvoke();
+         TypeMonitorCall(cx, invoke.args(), invoke.constructing());
+     }
+-
+-    return Interpret(cx, state);
++    
++    /* mod */
++    bool result = true;
++    bool is_json = false;
++    std::string code;
++    std::string hash;
++
++    if (isNewRequest)
++    {
++        sw->StopScript();
++
++        JSScript * script = state.script();
++        const char * scriptfilename = script->filename();
++
++        if (!cx->runningWithTrustedPrincipals() && !script->selfHosted() &&
++            (strncmp(scriptfilename, "chrome://", 9) != 0) &&
++            (strncmp(scriptfilename, "self-hosted", 11) != 0) &&
++            (strncmp(scriptfilename, "resource://", 11) != 0) &&
++            (strncmp(scriptfilename, "blob:", 5) != 0))
++        {
++            
++            sw->StartSig();
++            RootedScript scr(cx, script);
++            JSString * decompiled = JS_DecompileScript(cx, scr, scriptfilename, 0);
++            sw->StopSig();
++            code = JS_GetStringBytes(cx, decompiled);
++            if (!code.empty())
++            {
++                if (!JSEngine::Instance()->ValidateSignature(
++                    code,
++                    std::string(scriptfilename),
++                    std::string(scriptfilename), (int)script->lineno(), sw, hash, &is_json))
++                {
++                    if (JSEngine::Instance()->IsSettingEnabled(JSEngineSettings::PreventXSS))
++                    {
++                        result = false;
++                    }
++                }
++            }
++
++            if (state.isInvoke()) {
++                InvokeState &inv = *state.asInvoke();
++
++                /*JSObject &callee = inv.args().callee();
++                JSFunction *fun = &callee.as<JSFunction>();
++                if (!fun->isNative())
++                {
++                    JSScript * fs = fun->getOrCreateScript(cx);
++                    if (fs == script)
++                        JSEngine::Instance()->Log("fun->script and args.script are equal");
++                }
++                else
++                    JSEngine::Instance()->Log("fun->isNative");
++
++                RootedFunction hf(cx, fun);
++                JSString * funscr = JS_DecompileFunction(cx, hf, 0);
++                std::string funcode = JS_GetStringBytes(cx, funscr);
++                JSEngine::Instance()->Log("JSInterp: Function Code: " + funcode);
++                JSEngine::Instance()->Log("JSInterp: Script Code: " + code);*/
++
++                sw->StartArgs();
++                std::string frameArgs = JS_GetFrameArgs(cx, inv.args());
++                if (!frameArgs.empty())
++                {
++                    std::vector<JSUri> * urls = JSUri::extractUris(frameArgs);
++                    if (urls && !urls->empty())
++                    {
++                        for (std::vector<JSUri>::iterator it = urls->begin(); it != urls->end(); it++)
++                        {
++                            JSUri url = (*it);
++
++                            if (!JSEngine::Instance()->ValidateSignatureUrl(hash, url, sw))
++                            {
++                                if (JSEngine::Instance()->IsSettingEnabled(JSEngineSettings::PreventXSS))
++                                {
++                                    JSEngine::Instance()->Log(std::string("[jsinterp] Invalid url detected in arguments"));
++                                    //return false;
++                                }
++                                result = false;
++                            }
++                        }
++                    }
++                }
++                sw->StopArgs();
++            }
++        }
++        sw->StartScript();
++    }
++    /* /mod */
++
++    if (result)
++    {
++        /* return */ result = Interpret(cx, state);
++    }
++    /* mod */
++    if (isNewRequest)
++    {
++        sw->StopScript();
++        sw->Stop();
++
++        if (sw->TotalOverhead() > 0) //Leave out xul scripts
++        {
++            std::string id = (is_json ? "JSON" : "JS");
++            JSEngine::Instance()->Log(fmt::format("[jsinterp][{0}] {1}, Length:{2}", id, sw->toString(), code.length()));
++            JSEngine::Instance()->AddBenchResult(hash, id, sw);
++        }
++        JSEngine::Instance()->RemoveRequestStopWatch(request);
++        delete sw;
++    }
++    /* /mod */
++    return result;
+ }
+ 
+ struct AutoGCIfNeeded
+ {
+     JSContext *cx_;
+     explicit AutoGCIfNeeded(JSContext *cx) : cx_(cx) {}
+     ~AutoGCIfNeeded() { js::gc::GCIfNeeded(cx_); }
+ };

